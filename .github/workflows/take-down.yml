@@ -1,0 +1,34 @@
+# Takes the photo review page down 20 days after it went up on 14 Oct 2026.
+# Runs 3 to 6 Nov in case GitHub skips a scheduled run, and does nothing once the page is gone.
+name: Take the photo page down
+on:
+  schedule:
+    - cron: "17 9 3-6 11 *"
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+jobs:
+  remove:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Replace the page with a short notice
+        id: replace
+        run: |
+          if [ "$(date -u +%Y%m%d)" -lt 20261103 ]; then echo "Too early, nothing to do"; exit 0; fi
+          if grep -q "This page has been removed" index.html; then echo "Already removed"; exit 0; fi
+          printf '<!doctype html>\n<meta charset="utf-8">\n<meta name="robots" content="noindex">\n<title>Removed</title>\n<p>This page has been removed.</p>\n' > index.html
+          git config user.name "github-actions[bot]"
+          git config user.email "41898475+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Remove the photo page"
+          git push
+          echo "removed=yes" >> "$GITHUB_OUTPUT"
+      - name: Rebuild the site, then try to unpublish it
+        if: steps.replace.outputs.removed == 'yes'
+        continue-on-error: true
+        run: |
+          gh api -X POST "repos/$GITHUB_REPOSITORY/pages/builds"
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/pages"
